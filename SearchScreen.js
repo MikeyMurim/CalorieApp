@@ -6,7 +6,8 @@ import {
   TouchableOpacity, 
   StyleSheet, 
   Alert, 
-  SafeAreaView 
+  SafeAreaView,
+  Keyboard
 } from 'react-native';
 
 // Import the Context to access your global functions
@@ -50,6 +51,8 @@ export default function SearchScreen() {
     setProtein('');
     setFats('');
     setCarbs('');
+
+    Keyboard.dismiss();
   };
 
   return (
