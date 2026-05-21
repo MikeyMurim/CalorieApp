@@ -1,118 +1,84 @@
 import React, { useContext, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, Animated } from 'react-native';
-
-// Import the Context to read the global state
 import { CalorieContext } from './CalorieContext';
 
-export default function DashboardScreen() {
-  // FIXED: Reading 'calories' instead of 'dailyCalories'
-  const { calories } = useContext(CalorieContext);
-  const DAILY_GOAL = 2500;
-
-  // Set up React Native's built-in animation engine
+// A reusable sub-component for the new macro bars
+const MacroBar = ({ label, current, goal, color }) => {
   const animatedWidth = useRef(new Animated.Value(0)).current;
 
-  // Trigger the animation whenever calories changes
   useEffect(() => {
-    // Calculate percentage, capping it at 100% so it doesn't overflow the bar
-    const percentage = Math.min((calories / DAILY_GOAL) * 100, 100);
-
+    const percentage = Math.min((current / (goal || 1)) * 100, 100);
     Animated.timing(animatedWidth, {
-      toValue: percentage,
-      duration: 1200, // Smooth 1.2 second glide
-      useNativeDriver: false, 
+      toValue: percentage, duration: 1000, useNativeDriver: false, 
     }).start();
-  }, [calories]); // Watch the updated variable
+  }, [current, goal]);
+
+  return (
+    <View style={styles.macroContainer}>
+      <View style={styles.macroTextRow}>
+        <Text style={styles.macroLabel}>{label}</Text>
+        <Text style={styles.macroValue}>{current} / {goal}g</Text>
+      </View>
+      <View style={styles.miniBarBackground}>
+        <Animated.View style={[styles.miniBarFill, { backgroundColor: color, width: animatedWidth.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) }]} />
+      </View>
+    </View>
+  );
+};
+
+export default function DashboardScreen() {
+  const { 
+    calories, calorieGoal, 
+    protein, proteinGoal, 
+    carbs, carbsGoal, 
+    fats, fatsGoal 
+  } = useContext(CalorieContext);
+
+  const animatedWidth = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const percentage = Math.min((calories / (calorieGoal || 1)) * 100, 100);
+    Animated.timing(animatedWidth, {
+      toValue: percentage, duration: 1200, useNativeDriver: false, 
+    }).start();
+  }, [calories, calorieGoal]);
 
   return (
     <SafeAreaView style={styles.container}>
       <Text style={styles.headerTitle}>Dashboard</Text>
       
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Daily Calorie Goal</Text>
-        
-        {/* Updated variable usage here */}
-        <Text style={styles.calorieText}>
-          {calories} <Text style={styles.calorieSubText}>/ {DAILY_GOAL} kcal</Text>
-        </Text>
+        <Text style={styles.cardTitle}>Calories</Text>
+        <Text style={styles.calorieText}>{calories} <Text style={styles.calorieSubText}>/ {calorieGoal} kcal</Text></Text>
         
         <View style={styles.progressBarBackground}>
-          <Animated.View 
-            style={[
-              styles.progressBarFill, 
-              { width: animatedWidth.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) }
-            ]} 
-          />
+          <Animated.View style={[styles.progressBarFill, { width: animatedWidth.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) }]} />
         </View>
+      </View>
 
-        <Text style={styles.subText}>
-          {/* Updated variable usage here */}
-          {DAILY_GOAL - calories > 0 
-            ? `${DAILY_GOAL - calories} kcal remaining today` 
-            : "🔥 Calorie Goal Reached!"}
-        </Text>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Macronutrients</Text>
+        <MacroBar label="Protein" current={protein} goal={proteinGoal} color="#FF9500" />
+        <MacroBar label="Carbs" current={carbs} goal={carbsGoal} color="#34C759" />
+        <MacroBar label="Fats" current={fats} goal={fatsGoal} color="#FF3B30" />
       </View>
     </SafeAreaView>
   );
 }
 
-// Apple-inspired styling
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F7F8FA', 
-    padding: 20,
-  },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 20,
-    marginTop: 40,
-  },
-  card: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 30,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3, 
-  },
-  cardTitle: {
-    fontSize: 18,
-    color: '#666',
-    marginBottom: 10,
-    fontWeight: '600'
-  },
-  calorieText: {
-    fontSize: 42,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 20,
-  },
-  calorieSubText: {
-    fontSize: 18,
-    color: '#999',
-  },
-  progressBarBackground: {
-    width: '100%',
-    height: 12,
-    backgroundColor: '#E5E5EA',
-    borderRadius: 6,
-    overflow: 'hidden',
-    marginBottom: 15,
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#007AFF', // iOS Blue
-    borderRadius: 6,
-  },
-  subText: {
-    fontSize: 14,
-    color: '#8E8E93',
-    fontWeight: '500',
-  }
+  container: { flex: 1, backgroundColor: '#F7F8FA', padding: 20 },
+  headerTitle: { fontSize: 32, fontWeight: 'bold', color: '#000', marginBottom: 20, marginTop: 40 },
+  card: { backgroundColor: '#FFF', borderRadius: 16, padding: 20, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
+  cardTitle: { fontSize: 18, color: '#666', marginBottom: 10, fontWeight: '600' },
+  calorieText: { fontSize: 42, fontWeight: 'bold', color: '#000', marginBottom: 15, textAlign: 'center' },
+  calorieSubText: { fontSize: 18, color: '#999' },
+  progressBarBackground: { width: '100%', height: 16, backgroundColor: '#E5E5EA', borderRadius: 8, overflow: 'hidden' },
+  progressBarFill: { height: '100%', backgroundColor: '#007AFF', borderRadius: 8 },
+  macroContainer: { marginBottom: 15 },
+  macroTextRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  macroLabel: { fontSize: 16, fontWeight: '500', color: '#333' },
+  macroValue: { fontSize: 14, color: '#888' },
+  miniBarBackground: { width: '100%', height: 8, backgroundColor: '#E5E5EA', borderRadius: 4, overflow: 'hidden' },
+  miniBarFill: { height: '100%', borderRadius: 4 }
 });
