@@ -4,212 +4,213 @@ import {
   Text, 
   TextInput, 
   TouchableOpacity, 
-  StyleSheet, 
-  ScrollView, 
+  FlatList, 
   ActivityIndicator, 
-  Alert 
+  StyleSheet, 
+  Keyboard 
 } from 'react-native';
-import { CalorieContext } from './CalorieContext'; 
+import { CalorieContext } from './CalorieContext';
 
-export default function SearchScreen() {
-  const { addCalories } = useContext(CalorieContext);
+export default function SearchScreen({ navigation }) {
+  // 1. Context API Hooks for Global State
+  const { addCalories, addProtein, addCarbs, addFats } = useContext(CalorieContext);
 
-  const [foodName, setFoodName] = useState('');
-  const [calories, setCalories] = useState('');
-  const [protein, setProtein] = useState('');
-  const [carbs, setCarbs] = useState('');
-  const [fats, setFats] = useState('');
+  // 2. Local UI & Networking State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleApiSearch = async () => {
-    if (!foodName.trim()) {
-      Alert.alert("Input Required", "Please enter a food term to search.");
-      return;
-    }
-
-    setIsLoading(true);
-    const targetUrl = `https://edamam-food-and-grocery-database.p.rapidapi.com/api/food-database/v2/parser?ingr=${encodeURIComponent(foodName)}`;
+  // 3. Asynchronous Network Fetch
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
     
-    const requestOptions = {
-      method: 'GET',
-      headers: {
-        // Reads safely from your local hidden .env file
-        'x-rapidapi-key': process.env.EXPO_PUBLIC_RAPIDAPI_KEY, 
-        'x-rapidapi-host': 'edamam-food-and-grocery-database.p.rapidapi.com',
-        'Content-Type': 'application/json'
-      }
-    };
-
+    Keyboard.dismiss();
+    setIsLoading(true);
+    setErrorMessage('');
+    
     try {
-      const response = await fetch(targetUrl, requestOptions);
+      // Secure call using environment variables
+      const response = await fetch(
+        `https://edamam-food-and-grocery-database.p.rapidapi.com/api/food-database/v2/parser?ingr=${encodeURIComponent(searchQuery)}`, 
+        {
+          method: 'GET',
+          headers: {
+            'X-RapidAPI-Key': process.env.EXPO_PUBLIC_RAPIDAPI_KEY,
+            'X-RapidAPI-Host': 'edamam-food-and-grocery-database.p.rapidapi.com'
+          }
+        }
+      );
+
+      const data = await response.json();
       
-      if (!response.ok) {
-        throw new Error(`RapidAPI validation dropped. Status: ${response.status}`);
-      }
-
-      const jsonPayload = await response.json();
-
-      if (jsonPayload.hints && jsonPayload.hints.length > 0) {
-        const primaryMatch = jsonPayload.hints[0].food;
-        
-        console.log("--- SECURE NETWORK API RE-INTEGRATION SUCCESSFUL ---");
-        
-        setFoodName(primaryMatch.label);
-        setCalories(Math.round(primaryMatch.nutrients.ENERC_KCAL || 0).toString());
-        setProtein(Math.round(primaryMatch.nutrients.PROCNT || 0).toString());
-        setCarbs(Math.round(primaryMatch.nutrients.CHOCDF || 0).toString());
-        setFats(Math.round(primaryMatch.nutrients.FAT || 0).toString());
-        
+      if (data.hints && data.hints.length > 0) {
+        setSearchResults(data.hints);
       } else {
-        Alert.alert("No Results", "No database match found. Feel free to type details manually.");
+        setSearchResults([]);
+        setErrorMessage('No foods found. Try a different search.');
       }
-    } catch (networkError) {
-      console.error("Secure Engine Error Trace:", networkError);
-      Alert.alert("Connection Failure", "Could not reach server gateway. Manual entry is enabled.");
+    } catch (error) {
+      console.error("API Fetch Error: ", error);
+      setErrorMessage('Network error. Please try again later.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSaveEntry = () => {
-    if (!foodName.trim() || !calories.trim()) {
-      Alert.alert("Validation Error", "Food name and structural calories are required inputs.");
-      return;
-    }
+  // 4. Data Binding & Selection Handler (SWEBOK Ch 4: Defensive Coding)
+  const handleSelectFood = (item) => {
+    const nutrients = item.food.nutrients;
+    
+    // Graceful fallbacks using nullish coalescing or logical OR to prevent NaN crashes
+    const kcals = Math.round(nutrients.ENERC_KCAL || 0);
+    const protein = Math.round(nutrients.PROCNT || 0);
+    const carbs = Math.round(nutrients.CHOCDF || 0);
+    const fats = Math.round(nutrients.FAT || 0);
 
-    const numericCalories = parseInt(calories, 10);
-    const numericProtein = parseInt(protein || '0', 10);
-    const numericCarbs = parseInt(carbs || '0', 10);
-    const numericFats = parseInt(fats || '0', 10);
+    // Update Global Source of Truth
+    addCalories(kcals);
+    addProtein(protein);
+    addCarbs(carbs);
+    addFats(fats);
 
-    if (isNaN(numericCalories) || isNaN(numericProtein) || isNaN(numericCarbs) || isNaN(numericFats)) {
-      Alert.alert("Data Error", "Macros must be real numeric values.");
-      return;
-    }
+    // Reset local state and navigate back to see the animated UI update
+    setSearchQuery('');
+    setSearchResults([]);
+    navigation.navigate('Dashboard');
+  };
 
-    addCalories(numericCalories);
-    Alert.alert("Logged Successfully", `${foodName} has been recorded.`);
-
-    setFoodName('');
-    setCalories('');
-    setProtein('');
-    setCarbs('');
-    setFats('');
+  // 5. FlatList Render Item Component
+  const renderFoodItem = ({ item }) => {
+    const { food } = item;
+    const { nutrients } = food;
+    
+    return (
+      <TouchableOpacity 
+        style={styles.resultCard} 
+        onPress={() => handleSelectFood(item)}
+      >
+        <Text style={styles.foodTitle}>{food.label}</Text>
+        <View style={styles.macroRow}>
+          <Text style={styles.macroText}>🔥 {Math.round(nutrients.ENERC_KCAL || 0)} kcal</Text>
+          <Text style={styles.macroText}>🥩 P: {Math.round(nutrients.PROCNT || 0)}g</Text>
+          <Text style={styles.macroText}>🥖 C: {Math.round(nutrients.CHOCDF || 0)}g</Text>
+          <Text style={styles.macroText}>🥑 F: {Math.round(nutrients.FAT || 0)}g</Text>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
-      <View style={styles.headerArea}>
-        <Text style={styles.mainTitle}>The Daily Log</Text>
-        <Text style={styles.subSubtitle}>Query the food database securely or adjust metrics manually.</Text>
+    <View style={styles.container}>
+      <Text style={styles.headerTitle}>Find Food</Text>
+      
+      {/* Search Input Area */}
+      <View style={styles.searchRow}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="e.g., 100g Chicken Breast"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          onSubmitEditing={handleSearch}
+          returnKeyType="search"
+        />
+        <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
+          <Text style={styles.searchButtonText}>Search</Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.inputCard}>
-        <Text style={styles.fieldLabel}>FOOD NAME</Text>
-        <View style={styles.searchRow}>
-          <TextInput
-            style={[styles.textField, { flex: 1, marginRight: 8 }]}
-            placeholder="e.g. Avocado Toast"
-            placeholderTextColor="#A0A0A0"
-            value={foodName}
-            onChangeText={setFoodName}
-          />
-          <TouchableOpacity 
-            style={styles.apiSearchButton} 
-            onPress={handleApiSearch}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Text style={styles.apiButtonText}>Search API</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
+      {/* Network Status & Error Handling */}
+      {isLoading && <ActivityIndicator size="large" color="#007AFF" style={styles.loader} />}
+      {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
-      <View style={styles.inputCard}>
-        <Text style={styles.fieldLabel}>ENERGY (KCAL)</Text>
-        <View style={styles.fieldValueRow}>
-          <TextInput
-            style={styles.numericInput}
-            placeholder="0"
-            placeholderTextColor="#A0A0A0"
-            keyboardType="numeric"
-            value={calories}
-            onChangeText={setCalories}
-          />
-          <Text style={styles.iconElement}>🔥</Text>
-        </View>
-      </View>
-
-      <View style={styles.inputCard}>
-        <Text style={styles.fieldLabel}>PROTEIN (G)</Text>
-        <View style={styles.fieldValueRow}>
-          <TextInput
-            style={styles.numericInput}
-            placeholder="0"
-            placeholderTextColor="#A0A0A0"
-            keyboardType="numeric"
-            value={protein}
-            onChangeText={setProtein}
-          />
-          <View style={[styles.macroPillIndicator, { backgroundColor: '#3A86FF' }]} />
-        </View>
-      </View>
-
-      <View style={styles.inputCard}>
-        <Text style={styles.fieldLabel}>CARBS (G)</Text>
-        <View style={styles.fieldValueRow}>
-          <TextInput
-            style={styles.numericInput}
-            placeholder="0"
-            placeholderTextColor="#A0A0A0"
-            keyboardType="numeric"
-            value={carbs}
-            onChangeText={setCarbs}
-          />
-          <View style={[styles.macroPillIndicator, { backgroundColor: '#FFB703' }]} />
-        </View>
-      </View>
-
-      <View style={styles.inputCard}>
-        <Text style={styles.fieldLabel}>FATS (G)</Text>
-        <View style={styles.fieldValueRow}>
-          <TextInput
-            style={styles.numericInput}
-            placeholder="0"
-            placeholderTextColor="#A0A0A0"
-            keyboardType="numeric"
-            value={fats}
-            onChangeText={setFats}
-          />
-          <View style={[styles.macroPillIndicator, { backgroundColor: '#FFB703' }]} />
-        </View>
-      </View>
-
-      <TouchableOpacity style={styles.primaryActionButton} onPress={handleSaveEntry}>
-        <Text style={styles.actionButtonText}>Save Entry  ✓</Text>
-      </TouchableOpacity>
-    </ScrollView>
+      {/* Data-Bound List Rendering */}
+      <FlatList
+        data={searchResults}
+        keyExtractor={(item, index) => item.food.foodId + index.toString()}
+        renderItem={renderFoodItem}
+        contentContainerStyle={styles.listContainer}
+        showsVerticalScrollIndicator={false}
+      />
+    </View>
   );
 }
 
+// 6. UI Styling
 const styles = StyleSheet.create({
-  scrollContainer: { paddingGrow: 1, paddingHorizontal: 24, paddingTop: 40, paddingBottom: 60, backgroundColor: '#FAFAFC' },
-  headerArea: { marginBottom: 28 },
-  mainTitle: { fontSize: 32, fontWeight: '800', color: '#111111' },
-  subSubtitle: { fontSize: 15, color: '#666666', marginTop: 6 },
-  inputCard: { backgroundColor: '#FFFFFF', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 16, borderWidth: 1, borderColor: '#EFEFEF' },
-  fieldLabel: { fontSize: 11, fontWeight: '700', color: '#222222', letterSpacing: 0.8, marginBottom: 6 },
-  searchRow: { flexDirection: 'row', alignItems: 'center' },
-  textField: { fontSize: 18, color: '#111111', paddingVertical: 4 },
-  apiSearchButton: { backgroundColor: '#111111', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
-  apiButtonText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
-  fieldValueRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  numericInput: { fontSize: 28, fontWeight: '500', color: '#111111', flex: 1, paddingVertical: 2 },
-  iconElement: { fontSize: 22 },
-  macroPillIndicator: { width: 4, height: 24, borderRadius: 2 },
-  primaryActionButton: { backgroundColor: '#0052FF', borderRadius: 28, height: 56, justifyContent: 'center', alignItems: 'center', marginTop: 12 },
-  actionButtonText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' }
+  container: {
+    flex: 1,
+    backgroundColor: '#F2F2F7',
+    padding: 16,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    color: '#1C1C1E',
+  },
+  searchRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  searchInput: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    borderColor: '#E5E5EA',
+    borderWidth: 1,
+  },
+  searchButton: {
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  searchButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  loader: {
+    marginTop: 20,
+  },
+  errorText: {
+    color: '#FF3B30',
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  listContainer: {
+    paddingBottom: 40,
+  },
+  resultCard: {
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  foodTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1C1C1E',
+    marginBottom: 8,
+    textTransform: 'capitalize',
+  },
+  macroRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  macroText: {
+    fontSize: 14,
+    color: '#8E8E93',
+    fontWeight: '500',
+  },
 });
